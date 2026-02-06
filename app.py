@@ -20,7 +20,7 @@ async def dashboard():
 
 @app.get("/gainers")
 async def get_gainers(
-    api_key: str = Query(..., description="Polygon API key"),
+    api_key: str = Query(..., alias="apiKey", description="Polygon API key"),
     minutes: int = Query(10, ge=1, le=30),
     premarket: bool = Query(False),
 ):
