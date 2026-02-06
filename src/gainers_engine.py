@@ -112,7 +112,7 @@ class GainersEngine:
             reports.append(
                 GainerReport(
                     ticker=ticker,
-                    name=name_map.get(ticker, ticker),
+                    name=str(name_map.get(ticker, ticker)),
                     current_price=candidate["current_price"],
                     volume=candidate["volume"],
                     gain_10min_percent=round(gain_10min, 2),
