@@ -10,7 +10,7 @@ from src.polygon_client import PolygonClient
 from src.gainers_engine import GainersEngine
 
 app = FastAPI(title="Stock Gainers")
-TEMPLATE_PATH = Path(__file__).parent / "templates" / "dashboard.html"
+TEMPLATE_PATH = Path(__file__).parent / "src" / "templates" / "dashboard.html"
 
 
 @app.get("/", response_class=HTMLResponse)
