@@ -82,11 +82,18 @@ class GainersEngine:
                 }
             )
 
-        # Fetch bars for candidates
+        # Only fetch bars for top candidates (sorted by daily gain) — we need top_n results
+        candidates.sort(key=lambda c: c["day_gain"], reverse=True)
+        candidates = candidates[: self.top_n + 10]  # small buffer above top_n
+
         tickers = [c["ticker"] for c in candidates]
-        bars_map = await self.client.fetch_recent_bars_batch(
+
+        # Fetch bars and ticker names in parallel (independent of each other)
+        bars_future = self.client.fetch_recent_bars_batch(
             tickers, minutes=self.lookback_minutes, premarket=premarket
         )
+        names_future = self.client.get_ticker_details_batch(tickers)
+        bars_map, name_map = await asyncio.gather(bars_future, names_future)
 
         # Calculate 10-minute gains
         reports = []
@@ -102,13 +109,10 @@ class GainersEngine:
                 if first_price > 0:
                     gain_10min = ((last_price - first_price) / first_price) * 100
 
-            # Get company name
-            name = await self._get_ticker_name(ticker)
-
             reports.append(
                 GainerReport(
                     ticker=ticker,
-                    name=name,
+                    name=name_map.get(ticker, ticker),
                     current_price=candidate["current_price"],
                     volume=candidate["volume"],
                     gain_10min_percent=round(gain_10min, 2),

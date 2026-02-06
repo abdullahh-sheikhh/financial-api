@@ -24,8 +24,8 @@ async def get_gainers(
     minutes: int = Query(10, ge=1, le=30),
     premarket: bool = Query(False),
 ):
+    client = PolygonClient(api_key)
     try:
-        client = PolygonClient(api_key)
         engine = GainersEngine(client, top_n=20, lookback_minutes=minutes)
         reports = await engine.get_top_gainers(premarket=premarket)
 
@@ -47,6 +47,8 @@ async def get_gainers(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        await client.close()
 
 
 if __name__ == "__main__":

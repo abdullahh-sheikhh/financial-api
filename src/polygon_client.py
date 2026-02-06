@@ -41,16 +41,31 @@ class PolygonClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self._ticker_names: dict[str, str] = {}
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create a reusable HTTP client."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=30.0,
+                limits=httpx.Limits(max_connections=50, max_keepalive_connections=50),
+            )
+        return self._client
+
+    async def close(self):
+        """Close the HTTP client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
     async def _request(self, endpoint: str, params: dict = None) -> dict:
         """Make an authenticated request to Polygon API."""
         params = params or {}
         params["apiKey"] = self.api_key
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(f"{self.BASE_URL}{endpoint}", params=params)
-            response.raise_for_status()
-            return response.json()
+        client = await self._get_client()
+        response = await client.get(f"{self.BASE_URL}{endpoint}", params=params)
+        response.raise_for_status()
+        return response.json()
 
     async def get_gainers(self) -> list[dict]:
         """Get current top gainers from the market snapshot."""
@@ -78,6 +93,45 @@ class PolygonClient:
             return {"name": name}
         except Exception:
             return {"name": ticker}
+
+    async def get_ticker_details_batch(self, tickers: list[str]) -> dict[str, str]:
+        """Get company names for multiple tickers in a single API call."""
+        # Return cached results, find uncached
+        result = {}
+        uncached = []
+        for t in tickers:
+            if t in self._ticker_names:
+                result[t] = self._ticker_names[t]
+            else:
+                uncached.append(t)
+
+        if not uncached:
+            return result
+
+        # Polygon /v3/reference/tickers supports comma-separated ticker filter
+        # Process in chunks of 50 to stay within URL length limits
+        for i in range(0, len(uncached), 50):
+            chunk = uncached[i : i + 50]
+            try:
+                data = await self._request(
+                    "/v3/reference/tickers",
+                    params={"ticker.in": ",".join(chunk), "limit": len(chunk)},
+                )
+                for item in data.get("results", []):
+                    name = item.get("name", item.get("ticker", ""))
+                    ticker = item.get("ticker", "")
+                    if ticker:
+                        self._ticker_names[ticker] = name
+                        result[ticker] = name
+            except Exception:
+                pass
+
+        # Fill in any tickers that weren't found
+        for t in uncached:
+            if t not in result:
+                result[t] = t
+
+        return result
 
     async def get_aggregate_bars(
         self,

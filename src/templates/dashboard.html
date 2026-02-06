@@ -151,7 +151,7 @@
             status.className = 'status loading';
 
             try {
-                const res = await fetch(`/gainers?minutes=${timeframe}&premarket=${premarket}&api_key=${encodeURIComponent(apiKey)}`);
+                const res = await fetch(`/gainers?minutes=${timeframe}&premarket=${premarket}&apiKey=${encodeURIComponent(apiKey)}`);
                 if (!res.ok) throw new Error(`API error: ${res.status}`);
                 data = await res.json();
 
