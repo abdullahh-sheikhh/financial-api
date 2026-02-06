@@ -2,8 +2,6 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
-
 from .polygon_client import PolygonClient
 
 
@@ -29,7 +27,7 @@ class GainersEngine:
         self.lookback_minutes = lookback_minutes
         self._ticker_cache: dict[str, str] = {}
 
-    async def get_top_gainers(self, premarket: bool = False) -> list[GainerReport]:
+    async def get_top_gainers(self) -> list[GainerReport]:
         """
         Get top N percentage gainers based on 10-minute window.
 
@@ -39,32 +37,26 @@ class GainersEngine:
         3. Fetches 10-minute bars to calculate short-term gain
         4. Ranks and returns top N by 10-minute gain
         """
-        # Get current market snapshot with gainers
         snapshots = await self.client.get_gainers()
 
         if not snapshots:
-            # Fallback: get all tickers snapshot
             snapshots = await self.client.get_all_tickers_snapshot()
 
-        # Process snapshots into candidates
         candidates = []
-        for snap in snapshots[:100]:  # Process top 100 candidates
+        for snap in snapshots[:100]:
             ticker = snap.get("ticker", "")
             if not ticker:
                 continue
 
             day_data = snap.get("day", {})
             prev_day = snap.get("prevDay", {})
-            min_data = snap.get("min", {})
 
-            current_price = min_data.get("c") or day_data.get("c", 0)
+            current_price = day_data.get("c", 0)
             if current_price <= 0:
                 continue
 
             prev_close = prev_day.get("c", 0)
-            day_open = day_data.get("o", prev_close)
 
-            # Calculate daily gain
             if prev_close > 0:
                 day_gain = ((current_price - prev_close) / prev_close) * 100
             else:
@@ -78,19 +70,16 @@ class GainersEngine:
                     "current_price": current_price,
                     "volume": volume,
                     "day_gain": day_gain,
-                    "day_open": day_open,
                 }
             )
 
-        # Only fetch bars for top candidates (sorted by daily gain) — we need top_n results
         candidates.sort(key=lambda c: c["day_gain"], reverse=True)
-        candidates = candidates[: self.top_n + 10]  # small buffer above top_n
+        candidates = candidates[: self.top_n + 10]
 
         tickers = [c["ticker"] for c in candidates]
 
-        # Fetch bars and ticker names in parallel (independent of each other)
         bars_future = self.client.fetch_recent_bars_batch(
-            tickers, minutes=self.lookback_minutes, premarket=premarket
+            tickers, minutes=self.lookback_minutes
         )
         names_future = self.client.get_ticker_details_batch(tickers)
         bars_map, name_map = await asyncio.gather(bars_future, names_future)
@@ -141,20 +130,17 @@ class GainersEngine:
 
             day_data = snap.get("day", {})
             prev_day = snap.get("prevDay", {})
-            min_data = snap.get("min", {})
 
-            current_price = min_data.get("c") or day_data.get("c", 0)
+            current_price = day_data.get("c", 0)
             prev_close = prev_day.get("c", 0)
 
             if current_price <= 0:
                 continue
 
-            # Daily gain
             day_gain = 0
             if prev_close > 0:
                 day_gain = ((current_price - prev_close) / prev_close) * 100
 
-            # Use todaysChangePerc if available
             todays_change = snap.get("todaysChangePerc", day_gain)
 
             name = await self._get_ticker_name(ticker)

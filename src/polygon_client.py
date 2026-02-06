@@ -1,6 +1,6 @@
 """Polygon.io API client for fetching stock market data."""
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import httpx
 from dataclasses import dataclass
@@ -18,19 +18,6 @@ class StockBar:
     volume: int
     timestamp: datetime
     vwap: Optional[float] = None
-
-
-@dataclass
-class StockSnapshot:
-    """Current snapshot of a stock including daily data."""
-
-    ticker: str
-    name: str
-    current_price: float
-    volume: int
-    day_open: float
-    day_change_percent: float
-    bars: list[StockBar]
 
 
 class PolygonClient:
@@ -95,8 +82,7 @@ class PolygonClient:
             return {"name": ticker}
 
     async def get_ticker_details_batch(self, tickers: list[str]) -> dict[str, str]:
-        """Get company names for multiple tickers in a single API call."""
-        # Return cached results, find uncached
+        """Get company names for multiple tickers concurrently."""
         result = {}
         uncached = []
         for t in tickers:
@@ -108,28 +94,14 @@ class PolygonClient:
         if not uncached:
             return result
 
-        # Polygon /v3/reference/tickers supports comma-separated ticker filter
-        # Process in chunks of 50 to stay within URL length limits
-        for i in range(0, len(uncached), 50):
-            chunk = uncached[i : i + 50]
-            try:
-                data = await self._request(
-                    "/v3/reference/tickers",
-                    params={"ticker.in": ",".join(chunk), "limit": len(chunk)},
-                )
-                for item in data.get("results", []):
-                    name = item.get("name", item.get("ticker", ""))
-                    ticker = item.get("ticker", "")
-                    if ticker:
-                        self._ticker_names[ticker] = name
-                        result[ticker] = name
-            except Exception:
-                pass
+        async def fetch_name(t: str) -> tuple[str, str]:
+            details = await self.get_ticker_details(t)
+            return t, details.get("name", t)
 
-        # Fill in any tickers that weren't found
-        for t in uncached:
-            if t not in result:
-                result[t] = t
+        tasks = [fetch_name(t) for t in uncached]
+        results = await asyncio.gather(*tasks)
+        for t, name in results:
+            result[t] = name
 
         return result
 
@@ -140,17 +112,12 @@ class PolygonClient:
         to_date: datetime,
         timespan: str = "minute",
         multiplier: int = 1,
-        premarket: bool = False,
     ) -> list[StockBar]:
         """Get aggregate bars for a ticker."""
-        from_ts = from_date.strftime("%Y-%m-%d")
-        to_ts = to_date.strftime("%Y-%m-%d")
+        from_ts = int(from_date.timestamp() * 1000)
+        to_ts = int(to_date.timestamp() * 1000)
 
-        # Use timestamps for premarket to include extended hours
         params = {"adjusted": "true", "sort": "asc", "limit": 50000}
-        if premarket:
-            from_ts = int(from_date.timestamp() * 1000)
-            to_ts = int(to_date.timestamp() * 1000)
 
         data = await self._request(
             f"/v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{from_ts}/{to_ts}",
@@ -167,7 +134,7 @@ class PolygonClient:
                     low=result["l"],
                     close=result["c"],
                     volume=result["v"],
-                    timestamp=datetime.fromtimestamp(result["t"] / 1000),
+                    timestamp=datetime.fromtimestamp(result["t"] / 1000, tz=timezone.utc),
                     vwap=result.get("vw"),
                 )
             )
@@ -193,18 +160,16 @@ class PolygonClient:
         return data.get("results", [])
 
     async def fetch_recent_bars_batch(
-        self, tickers: list[str], minutes: int = 10, premarket: bool = False
+        self, tickers: list[str], minutes: int = 10
     ) -> dict[str, list[StockBar]]:
         """Fetch recent 1-minute bars for multiple tickers."""
-        end_time = (datetime.now() - timedelta(minutes=1)).replace(second=0, microsecond=0)
-        start_time = end_time - timedelta(minutes=minutes - 1)
+        end_time = datetime.now(tz=timezone.utc).replace(second=0, microsecond=0)
+        start_time = end_time - timedelta(minutes=minutes)
         from_date = start_time - timedelta(minutes=5)
 
         async def fetch_single(ticker: str) -> tuple[str, list[StockBar]]:
             try:
-                bars = await self.get_aggregate_bars(
-                    ticker, from_date, end_time, premarket=premarket
-                )
+                bars = await self.get_aggregate_bars(ticker, from_date, end_time)
                 window = [b for b in bars if start_time <= b.timestamp <= end_time]
                 return ticker, window[-minutes:] if len(window) > minutes else window
             except Exception:

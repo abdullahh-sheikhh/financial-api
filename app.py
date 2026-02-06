@@ -22,17 +22,15 @@ async def dashboard():
 async def get_gainers(
     api_key: str = Query(..., alias="apiKey", description="Polygon API key"),
     minutes: int = Query(10, ge=1, le=30),
-    premarket: bool = Query(False),
 ):
     client = PolygonClient(api_key)
     try:
         engine = GainersEngine(client, top_n=20, lookback_minutes=minutes)
-        reports = await engine.get_top_gainers(premarket=premarket)
+        reports = await engine.get_top_gainers()
 
         return {
             "time": datetime.now().isoformat(),
             "minutes": minutes,
-            "premarket": premarket,
             "gainers": [
                 {
                     "ticker": r.ticker,
