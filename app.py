@@ -35,7 +35,8 @@ async def get_gainers(
                 {
                     "ticker": r.ticker,
                     "name": r.name,
-                    "price": r.current_price,
+                    "current_price": r.market_price,
+                    "avg_price": r.avg_price,
                     "volume": r.volume,
                     "gain_window": r.gain_10min_percent,
                     "gain_day": r.gain_day_percent,

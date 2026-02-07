@@ -92,9 +92,6 @@
                     <option value="10" selected>10 min</option>
                 </select>
                 <label class="checkbox-label">
-                    <input type="checkbox" id="premarket"> Premarket
-                </label>
-                <label class="checkbox-label">
                     <input type="checkbox" id="autoRefresh"> Auto Refresh
                 </label>
                 <button onclick="refresh()" id="refreshBtn" class="primary">Load</button>
@@ -108,14 +105,15 @@
                     <th>#</th>
                     <th>Ticker</th>
                     <th>Name</th>
-                    <th>Price</th>
+                    <th>Current Price</th>
+                    <th>Avg Price</th>
                     <th>Volume</th>
                     <th id="gainHeader">10min %</th>
                     <th>Day %</th>
                 </tr>
             </thead>
             <tbody id="tbody">
-                <tr><td colspan="7" class="msg">Enter your Polygon API key and click Load</td></tr>
+                <tr><td colspan="8" class="msg">Enter your Polygon API key and click Load</td></tr>
             </tbody>
         </table>
     </div>
@@ -131,7 +129,7 @@
             const apiKey = document.getElementById('apiKey').value.trim();
             if (!apiKey) {
                 document.getElementById('tbody').innerHTML =
-                    '<tr><td colspan="7" class="msg error">Please enter API key</td></tr>';
+                    '<tr><td colspan="8" class="msg error">Please enter API key</td></tr>';
                 return;
             }
 
@@ -142,7 +140,6 @@
             const status = document.getElementById('status');
             const tbody = document.getElementById('tbody');
             const timeframe = document.getElementById('timeframe').value;
-            const premarket = document.getElementById('premarket').checked;
 
             document.getElementById('gainHeader').textContent = `${timeframe}min %`;
 
@@ -151,19 +148,20 @@
             status.className = 'status loading';
 
             try {
-                const res = await fetch(`/gainers?minutes=${timeframe}&premarket=${premarket}&apiKey=${encodeURIComponent(apiKey)}`);
+                const res = await fetch(`/gainers?minutes=${timeframe}&apiKey=${encodeURIComponent(apiKey)}`);
                 if (!res.ok) throw new Error(`API error: ${res.status}`);
                 data = await res.json();
 
                 if (!data.gainers?.length) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="msg">No data returned</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="msg">No data returned</td></tr>';
                 } else {
                     tbody.innerHTML = data.gainers.map((g, i) => `
                         <tr>
                             <td class="rank">${i + 1}</td>
                             <td class="ticker">${g.ticker}</td>
                             <td class="name">${g.name}</td>
-                            <td class="price">$${g.price.toFixed(2)}</td>
+                            <td class="price">$${g.current_price.toFixed(2)}</td>
+                            <td class="price">$${g.avg_price.toFixed(2)}</td>
                             <td class="volume">${g.volume.toLocaleString()}</td>
                             <td class="${g.gain_window >= 0 ? 'positive' : 'negative'}">
                                 ${g.gain_window >= 0 ? '+' : ''}${g.gain_window.toFixed(2)}%
@@ -178,7 +176,7 @@
                 status.textContent = new Date(data.time).toLocaleTimeString();
                 status.className = 'status';
             } catch (err) {
-                tbody.innerHTML = `<tr><td colspan="7" class="msg error">${err.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="msg error">${err.message}</td></tr>`;
                 status.textContent = 'Error';
                 status.className = 'status error';
             }
@@ -188,8 +186,8 @@
         function exportCsv() {
             if (!data.gainers?.length) return;
             const rows = [
-                'Rank,Ticker,Name,Price,Volume,Window%,Day%',
-                ...data.gainers.map((g, i) => `${i+1},${g.ticker},"${g.name}",${g.price},${g.volume},${g.gain_window},${g.gain_day}`)
+                'Rank,Ticker,Name,Current Price,Avg Price,Volume,Window%,Day%',
+                ...data.gainers.map((g, i) => `${i+1},${g.ticker},"${g.name}",${g.current_price},${g.avg_price},${g.volume},${g.gain_window},${g.gain_day}`)
             ];
             const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
             const a = document.createElement('a');

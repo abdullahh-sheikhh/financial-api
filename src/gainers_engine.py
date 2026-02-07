@@ -11,7 +11,8 @@ class GainerReport:
 
     ticker: str
     name: str
-    current_price: float
+    market_price: float
+    avg_price: float
     volume: int
     gain_10min_percent: float
     gain_day_percent: float
@@ -48,17 +49,18 @@ class GainersEngine:
             if not ticker:
                 continue
 
+            last_trade = snap.get("lastTrade", {})
             day_data = snap.get("day", {})
             prev_day = snap.get("prevDay", {})
 
-            current_price = day_data.get("c", 0)
-            if current_price <= 0:
+            market_price = last_trade.get("p", 0)
+            if market_price <= 0:
                 continue
 
             prev_close = prev_day.get("c", 0)
 
             if prev_close > 0:
-                day_gain = ((current_price - prev_close) / prev_close) * 100
+                day_gain = ((market_price - prev_close) / prev_close) * 100
             else:
                 day_gain = 0
 
@@ -67,7 +69,7 @@ class GainersEngine:
             candidates.append(
                 {
                     "ticker": ticker,
-                    "current_price": current_price,
+                    "market_price": market_price,
                     "volume": volume,
                     "day_gain": day_gain,
                 }
@@ -78,31 +80,40 @@ class GainersEngine:
 
         tickers = [c["ticker"] for c in candidates]
 
-        bars_future = self.client.fetch_recent_bars_batch(
-            tickers, minutes=self.lookback_minutes
+        one_min_future = self.client.fetch_recent_bars_batch(
+            tickers, minutes=self.lookback_minutes, multiplier=1
+        )
+        ten_min_future = self.client.fetch_recent_bars_batch(
+            tickers, minutes=30, multiplier=10
         )
         names_future = self.client.get_ticker_details_batch(tickers)
-        bars_map, name_map = await asyncio.gather(bars_future, names_future)
+        one_min_map, ten_min_map, name_map = await asyncio.gather(
+            one_min_future, ten_min_future, names_future
+        )
 
-        # Calculate 10-minute gains
         reports = []
         for candidate in candidates:
             ticker = candidate["ticker"]
-            bars = bars_map.get(ticker, [])
+            current_price = candidate["market_price"]
 
-            # Calculate 10-minute gain
+            one_min_bars = one_min_map.get(ticker, [])
+            avg_price = current_price
+            if len(one_min_bars) >= 2:
+                avg_price = sum(b.close for b in one_min_bars) / len(one_min_bars)
+
+            ten_min_bars = ten_min_map.get(ticker, [])
             gain_10min = 0.0
-            if len(bars) >= 2:
-                first_price = bars[0].open
-                last_price = bars[-1].close
-                if first_price > 0:
-                    gain_10min = ((last_price - first_price) / first_price) * 100
+            if len(ten_min_bars) >= 1:
+                base_price = ten_min_bars[-1].close
+                if base_price > 0:
+                    gain_10min = ((current_price - base_price) / base_price) * 100
 
             reports.append(
                 GainerReport(
                     ticker=ticker,
                     name=str(name_map.get(ticker, ticker)),
-                    current_price=candidate["current_price"],
+                    market_price=current_price,
+                    avg_price=round(avg_price, 4),
                     volume=candidate["volume"],
                     gain_10min_percent=round(gain_10min, 2),
                     gain_day_percent=round(candidate["day_gain"], 2),
@@ -128,18 +139,19 @@ class GainersEngine:
             if not ticker:
                 continue
 
+            last_trade = snap.get("lastTrade", {})
             day_data = snap.get("day", {})
             prev_day = snap.get("prevDay", {})
 
-            current_price = day_data.get("c", 0)
+            market_price = last_trade.get("p", 0)
             prev_close = prev_day.get("c", 0)
 
-            if current_price <= 0:
+            if market_price <= 0:
                 continue
 
             day_gain = 0
             if prev_close > 0:
-                day_gain = ((current_price - prev_close) / prev_close) * 100
+                day_gain = ((market_price - prev_close) / prev_close) * 100
 
             todays_change = snap.get("todaysChangePerc", day_gain)
 
@@ -149,9 +161,10 @@ class GainersEngine:
                 GainerReport(
                     ticker=ticker,
                     name=name,
-                    current_price=current_price,
+                    market_price=market_price,
+                    avg_price=market_price,
                     volume=day_data.get("v", 0),
-                    gain_10min_percent=round(todays_change, 2),  # Approximation
+                    gain_10min_percent=round(todays_change, 2),
                     gain_day_percent=round(day_gain, 2),
                     timestamp=datetime.now(),
                 )
@@ -176,19 +189,19 @@ def format_report(reports: list[GainerReport]) -> str:
         return "No gainers found."
 
     lines = [
-        "=" * 80,
+        "=" * 100,
         f"TOP {len(reports)} GAINERS - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        "=" * 80,
-        f"{'Ticker':<8} {'Name':<25} {'Price':>10} {'Volume':>12} {'10min%':>8} {'Day%':>8}",
-        "-" * 80,
+        "=" * 100,
+        f"{'Ticker':<8} {'Name':<25} {'Current$':>10} {'AvgPrice':>10} {'Volume':>12} {'10min%':>8} {'Day%':>8}",
+        "-" * 100,
     ]
 
     for r in reports:
         name = r.name[:24] if len(r.name) > 24 else r.name
         lines.append(
-            f"{r.ticker:<8} {name:<25} ${r.current_price:>9.2f} {r.volume:>12,} "
+            f"{r.ticker:<8} {name:<25} ${r.market_price:>9.2f} ${r.avg_price:>9.2f} {r.volume:>12,} "
             f"{r.gain_10min_percent:>+7.2f}% {r.gain_day_percent:>+7.2f}%"
         )
 
-    lines.append("=" * 80)
+    lines.append("=" * 100)
     return "\n".join(lines)
