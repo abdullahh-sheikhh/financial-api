@@ -160,8 +160,8 @@
                             <td class="rank">${i + 1}</td>
                             <td class="ticker">${g.ticker}</td>
                             <td class="name">${g.name}</td>
-                            <td class="price">$${g.current_price.toFixed(2)}</td>
-                            <td class="price">$${g.avg_price.toFixed(2)}</td>
+                            <td class="price">$${g.current_price.toFixed(4)}</td>
+                            <td class="price">$${g.avg_price.toFixed(4)}</td>
                             <td class="volume">${g.volume.toLocaleString()}</td>
                             <td class="${g.gain_window >= 0 ? 'positive' : 'negative'}">
                                 ${g.gain_window >= 0 ? '+' : ''}${g.gain_window.toFixed(2)}%

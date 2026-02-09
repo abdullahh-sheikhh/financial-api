@@ -162,9 +162,9 @@ class PolygonClient:
     async def fetch_recent_bars_batch(
         self, tickers: list[str], minutes: int = 10, multiplier: int = 1
     ) -> dict[str, list[StockBar]]:
-        """Fetch recent bars for multiple tickers."""
-        end_time = datetime.now(tz=timezone.utc).replace(second=0, microsecond=0)
-        start_time = end_time - timedelta(minutes=minutes)
+        """Fetch recent completed bars for multiple tickers."""
+        end_time = datetime.now(tz=timezone.utc).replace(second=0, microsecond=0) - timedelta(minutes=1)
+        start_time = end_time - timedelta(minutes=minutes - 1)
         from_date = start_time - timedelta(minutes=5)
 
         async def fetch_single(ticker: str) -> tuple[str, list[StockBar]]:

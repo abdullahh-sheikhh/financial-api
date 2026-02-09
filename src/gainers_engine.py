@@ -80,31 +80,25 @@ class GainersEngine:
 
         tickers = [c["ticker"] for c in candidates]
 
-        one_min_future = self.client.fetch_recent_bars_batch(
-            tickers, minutes=self.lookback_minutes, multiplier=1
-        )
-        ten_min_future = self.client.fetch_recent_bars_batch(
-            tickers, minutes=30, multiplier=10
+        bars_future = self.client.fetch_recent_bars_batch(
+            tickers, minutes=self.lookback_minutes
         )
         names_future = self.client.get_ticker_details_batch(tickers)
-        one_min_map, ten_min_map, name_map = await asyncio.gather(
-            one_min_future, ten_min_future, names_future
-        )
+        bars_map, name_map = await asyncio.gather(bars_future, names_future)
 
         reports = []
         for candidate in candidates:
             ticker = candidate["ticker"]
             current_price = candidate["market_price"]
 
-            one_min_bars = one_min_map.get(ticker, [])
+            bars = bars_map.get(ticker, [])
             avg_price = current_price
-            if len(one_min_bars) >= 2:
-                avg_price = sum(b.close for b in one_min_bars) / len(one_min_bars)
+            if len(bars) >= 2:
+                avg_price = sum(b.close for b in bars) / len(bars)
 
-            ten_min_bars = ten_min_map.get(ticker, [])
             gain_10min = 0.0
-            if len(ten_min_bars) >= 1:
-                base_price = ten_min_bars[-1].close
+            if len(bars) >= 1:
+                base_price = bars[0].close
                 if base_price > 0:
                     gain_10min = ((current_price - base_price) / base_price) * 100
 
@@ -199,7 +193,7 @@ def format_report(reports: list[GainerReport]) -> str:
     for r in reports:
         name = r.name[:24] if len(r.name) > 24 else r.name
         lines.append(
-            f"{r.ticker:<8} {name:<25} ${r.market_price:>9.2f} ${r.avg_price:>9.2f} {r.volume:>12,} "
+            f"{r.ticker:<8} {name:<25} ${r.market_price:>9.4f} ${r.avg_price:>9.4f} {r.volume:>12,} "
             f"{r.gain_10min_percent:>+7.2f}% {r.gain_day_percent:>+7.2f}%"
         )
 
