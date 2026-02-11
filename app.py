@@ -37,8 +37,10 @@ async def get_gainers(
                     "name": r.name,
                     "current_price": r.market_price,
                     "avg_price": r.avg_price,
+                    "low_price": r.low_price,
                     "volume": r.volume,
                     "gain_window": r.gain_10min_percent,
+                    "gain_from_low": r.gain_from_low_price,
                     "gain_day": r.gain_day_percent,
                 }
                 for r in reports

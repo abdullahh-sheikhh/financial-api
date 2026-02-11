@@ -13,8 +13,10 @@ class GainerReport:
     name: str
     market_price: float
     avg_price: float
+    low_price: float
     volume: int
     gain_10min_percent: float
+    gain_from_low_price: float
     gain_day_percent: float
     timestamp: datetime
 
@@ -80,27 +82,41 @@ class GainersEngine:
 
         tickers = [c["ticker"] for c in candidates]
 
-        bars_future = self.client.fetch_recent_bars_batch(
+        bars_1min_future = self.client.fetch_recent_bars_batch(
             tickers, minutes=self.lookback_minutes
         )
+        bars_10min_future = self.client.fetch_recent_bars_batch(
+            tickers, minutes=30, multiplier=10
+        )
         names_future = self.client.get_ticker_details_batch(tickers)
-        bars_map, name_map = await asyncio.gather(bars_future, names_future)
+        bars_1min_map, bars_10min_map, name_map = await asyncio.gather(
+            bars_1min_future, bars_10min_future, names_future
+        )
 
         reports = []
         for candidate in candidates:
             ticker = candidate["ticker"]
             current_price = candidate["market_price"]
 
-            bars = bars_map.get(ticker, [])
+            bars_1min = bars_1min_map.get(ticker, [])
             avg_price = current_price
-            if len(bars) >= 2:
-                avg_price = sum(b.close for b in bars) / len(bars)
+            if len(bars_1min) >= 2:
+                avg_price = sum(b.close for b in bars_1min) / len(bars_1min)
 
+            bars_10min = bars_10min_map.get(ticker, [])
             gain_10min = 0.0
-            if len(bars) >= 1:
-                base_price = bars[0].close
+            low_price = current_price
+            gain_from_low = 0.0
+
+            if len(bars_10min) >= 1:
+                last_10min_bar = bars_10min[-1]
+                low_price = last_10min_bar.low
+                base_price = last_10min_bar.close
+
                 if base_price > 0:
                     gain_10min = ((current_price - base_price) / base_price) * 100
+                if low_price > 0:
+                    gain_from_low = ((current_price - low_price) / low_price) * 100
 
             reports.append(
                 GainerReport(
@@ -108,8 +124,10 @@ class GainersEngine:
                     name=str(name_map.get(ticker, ticker)),
                     market_price=current_price,
                     avg_price=round(avg_price, 4),
+                    low_price=round(low_price, 4),
                     volume=candidate["volume"],
                     gain_10min_percent=round(gain_10min, 2),
+                    gain_from_low_price=round(gain_from_low, 2),
                     gain_day_percent=round(candidate["day_gain"], 2),
                     timestamp=datetime.now(),
                 )
@@ -157,8 +175,10 @@ class GainersEngine:
                     name=name,
                     market_price=market_price,
                     avg_price=market_price,
+                    low_price=market_price,
                     volume=day_data.get("v", 0),
                     gain_10min_percent=round(todays_change, 2),
+                    gain_from_low_price=0.0,
                     gain_day_percent=round(day_gain, 2),
                     timestamp=datetime.now(),
                 )
@@ -186,15 +206,15 @@ def format_report(reports: list[GainerReport]) -> str:
         "=" * 100,
         f"TOP {len(reports)} GAINERS - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         "=" * 100,
-        f"{'Ticker':<8} {'Name':<25} {'Current$':>10} {'AvgPrice':>10} {'Volume':>12} {'10min%':>8} {'Day%':>8}",
+        f"{'Ticker':<8} {'Name':<25} {'Current$':>10} {'AvgPrice':>10} {'Low$':>10} {'Volume':>12} {'10min%':>8} {'FromLow%':>9} {'Day%':>8}",
         "-" * 100,
     ]
 
     for r in reports:
         name = r.name[:24] if len(r.name) > 24 else r.name
         lines.append(
-            f"{r.ticker:<8} {name:<25} ${r.market_price:>9.4f} ${r.avg_price:>9.4f} {r.volume:>12,} "
-            f"{r.gain_10min_percent:>+7.2f}% {r.gain_day_percent:>+7.2f}%"
+            f"{r.ticker:<8} {name:<25} ${r.market_price:>9.4f} ${r.avg_price:>9.4f} ${r.low_price:>9.4f} {r.volume:>12,} "
+            f"{r.gain_10min_percent:>+7.2f}% {r.gain_from_low_price:>+8.2f}% {r.gain_day_percent:>+7.2f}%"
         )
 
     lines.append("=" * 100)

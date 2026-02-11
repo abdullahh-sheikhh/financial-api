@@ -107,13 +107,15 @@
                     <th>Name</th>
                     <th>Current Price</th>
                     <th>Avg Price</th>
+                    <th>Low Price</th>
                     <th>Volume</th>
                     <th id="gainHeader">10min %</th>
+                    <th>From Low %</th>
                     <th>Day %</th>
                 </tr>
             </thead>
             <tbody id="tbody">
-                <tr><td colspan="8" class="msg">Enter your Polygon API key and click Load</td></tr>
+                <tr><td colspan="10" class="msg">Enter your Polygon API key and click Load</td></tr>
             </tbody>
         </table>
     </div>
@@ -129,7 +131,7 @@
             const apiKey = document.getElementById('apiKey').value.trim();
             if (!apiKey) {
                 document.getElementById('tbody').innerHTML =
-                    '<tr><td colspan="8" class="msg error">Please enter API key</td></tr>';
+                    '<tr><td colspan="10" class="msg error">Please enter API key</td></tr>';
                 return;
             }
 
@@ -153,7 +155,7 @@
                 data = await res.json();
 
                 if (!data.gainers?.length) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="msg">No data returned</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="10" class="msg">No data returned</td></tr>';
                 } else {
                     tbody.innerHTML = data.gainers.map((g, i) => `
                         <tr>
@@ -162,9 +164,13 @@
                             <td class="name">${g.name}</td>
                             <td class="price">$${g.current_price.toFixed(4)}</td>
                             <td class="price">$${g.avg_price.toFixed(4)}</td>
+                            <td class="price">$${g.low_price.toFixed(4)}</td>
                             <td class="volume">${g.volume.toLocaleString()}</td>
                             <td class="${g.gain_window >= 0 ? 'positive' : 'negative'}">
                                 ${g.gain_window >= 0 ? '+' : ''}${g.gain_window.toFixed(2)}%
+                            </td>
+                            <td class="${g.gain_from_low >= 0 ? 'positive' : 'negative'}">
+                                ${g.gain_from_low >= 0 ? '+' : ''}${g.gain_from_low.toFixed(2)}%
                             </td>
                             <td class="${g.gain_day >= 0 ? 'positive' : 'negative'}">
                                 ${g.gain_day >= 0 ? '+' : ''}${g.gain_day.toFixed(2)}%
@@ -176,7 +182,7 @@
                 status.textContent = new Date(data.time).toLocaleTimeString();
                 status.className = 'status';
             } catch (err) {
-                tbody.innerHTML = `<tr><td colspan="8" class="msg error">${err.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="10" class="msg error">${err.message}</td></tr>`;
                 status.textContent = 'Error';
                 status.className = 'status error';
             }
@@ -186,8 +192,8 @@
         function exportCsv() {
             if (!data.gainers?.length) return;
             const rows = [
-                'Rank,Ticker,Name,Current Price,Avg Price,Volume,Window%,Day%',
-                ...data.gainers.map((g, i) => `${i+1},${g.ticker},"${g.name}",${g.current_price},${g.avg_price},${g.volume},${g.gain_window},${g.gain_day}`)
+                'Rank,Ticker,Name,Current Price,Avg Price,Low Price,Volume,Window%,From Low%,Day%',
+                ...data.gainers.map((g, i) => `${i+1},${g.ticker},"${g.name}",${g.current_price},${g.avg_price},${g.low_price},${g.volume},${g.gain_window},${g.gain_from_low},${g.gain_day}`)
             ];
             const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
             const a = document.createElement('a');
